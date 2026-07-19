@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Issue Radar</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+  h1 { font-size: 24px; margin: 0; }
+  h1 .radar { color: #58a6ff; }
+  .meta { color: #8b949e; font-size: 13px; }
+  a { color: #58a6ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .btn {
+    background: #21262d; border: 1px solid #30363d; color: #e6edf3;
+    padding: 6px 14px; border-radius: 6px; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: #30363d; }
+  .profile {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 14px 18px; margin: 20px 0; font-size: 14px; color: #8b949e;
+  }
+  .profile b { color: #e6edf3; }
+  .error {
+    background: #3d1d1d; border: 1px solid #8c3b3b; border-radius: 8px;
+    padding: 14px 18px; margin: 20px 0; font-size: 14px;
+  }
+  .card {
+    display: block; background: #161b22; border: 1px solid #30363d;
+    border-radius: 8px; padding: 16px 18px; margin: 12px 0;
+  }
+  .card:hover { border-color: #58a6ff; }
+  .card-top { display: flex; gap: 10px; align-items: baseline; }
+  .score {
+    font-weight: 700; font-size: 14px; color: #3fb950; min-width: 34px;
+  }
+  .score.neg { color: #8b949e; }
+  .card-title { font-size: 15px; font-weight: 600; color: #e6edf3; }
+  .card-repo { color: #8b949e; font-size: 13px; margin-top: 2px; }
+  .chips { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    background: #21262d; border: 1px solid #30363d; color: #8b949e;
+  }
+  .chip.label { color: #d2a8ff; border-color: #6e40c9; background: #271d3a; }
+  .why { margin-top: 10px; font-size: 13px; color: #7ee787; }
+  .why .dim { color: #8b949e; }
+  .empty { color: #8b949e; text-align: center; margin-top: 60px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Issue <span class="radar">Radar</span></h1>
+    <div>
+      {% if built %}<span class="meta">built {{ built }} UTC</span>{% endif %}
+      <a class="btn" href="/?refresh=1">↻ Refresh</a>
+    </div>
+  </header>
+
+  {% if error %}
+  <div class="error"><b>Feed build failed:</b> {{ error }}</div>
+  {% endif %}
+
+  {% if feed %}
+  <div class="profile">
+    <b>{{ feed.profile.login }}</b> ·
+    languages: <b>{{ feed.profile.languages | map(attribute=0) | join(', ') }}</b> ·
+    keywords: {{ feed.profile.keywords | map(attribute=0) | join(', ') }}
+    <div class="meta" style="margin-top:6px">
+      queries: {% for q in feed.queries %}{{ q.text }}{% if not loop.last %} · {% endif %}{% endfor %}
+    </div>
+  </div>
+
+  {% if feed.matches %}
+    {% for m in feed.matches[:25] %}
+    <a class="card" href="{{ m.url }}" target="_blank" rel="noopener">
+      <div class="card-top">
+        <span class="score{% if m.score <= 0 %} neg{% endif %}">{% if m.score > 0 %}+{% endif %}{{ m.score }}</span>
+        <div>
+          <div class="card-title">{{ m.title }}</div>
+          <div class="card-repo">
+            {{ m.repo }}#{{ m.number }} · {{ "{:,}".format(m.stars) }}★ ·
+            {{ m.age_days }}d old · {{ m.comments }} comments
+          </div>
+        </div>
+      </div>
+      {% if m.labels %}
+      <div class="chips">
+        {% for l in m.labels %}<span class="chip label">{{ l }}</span>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="why">
+        ✓ {{ m.reasons | join(' · ') }}
+        <span class="dim"> — matched "{{ m.matched | join('", "') }}"</span>
+      </div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No matches survived the filters this run. Try Refresh.</div>
+  {% endif %}
+
+  {% elif not error %}
+  <div class="empty">Building your feed… reload in ~20 seconds.</div>
+  {% endif %}
+</div>
+</body>
+</html>
