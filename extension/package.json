@@ -1,0 +1,72 @@
+{
+  "name": "issue-radar",
+  "displayName": "Issue Radar",
+  "description": "Personalized GitHub issue & project discovery in your sidebar, built on GitHub's semantic issue search",
+  "version": "0.1.0",
+  "publisher": "nandanadileep",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/nandanadileep/get-issues.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "issueRadar",
+          "title": "Issue Radar",
+          "icon": "media/radar.svg"
+        }
+      ]
+    },
+    "views": {
+      "issueRadar": [
+        {
+          "type": "webview",
+          "id": "issueRadar.feed",
+          "name": "Feed"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "issueRadar.refresh",
+        "title": "Issue Radar: Refresh Feed",
+        "icon": "$(refresh)"
+      }
+    ],
+    "configuration": {
+      "title": "Issue Radar",
+      "properties": {
+        "issueRadar.minStars": {
+          "type": "number",
+          "default": 500,
+          "description": "Minimum repo stars for an issue to appear in the feed"
+        },
+        "issueRadar.maxAgeDays": {
+          "type": "number",
+          "default": 365,
+          "description": "Maximum issue age (days) to appear in the feed"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.5.0"
+  }
+}
