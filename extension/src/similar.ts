@@ -3,7 +3,7 @@
  * language), or derived from your profile when no workspace is open.
  */
 import * as vscode from 'vscode';
-import { getRepo, searchRepos } from './github';
+import { getRepo, searchRepos } from './api';
 import type { Profile } from './engine';
 
 export interface SimilarRepo {

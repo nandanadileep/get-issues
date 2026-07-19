@@ -2,7 +2,7 @@
   "name": "issue-radar",
   "displayName": "Issue Radar",
   "description": "Personalized GitHub issue & project discovery in your sidebar, built on GitHub's semantic issue search",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "nandanadileep",
   "license": "MIT",
   "repository": {
