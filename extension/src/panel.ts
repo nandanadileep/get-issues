@@ -44,6 +44,8 @@ const ICON_STAR = `<svg viewBox="0 0 16 16" width="10" height="10" fill="current
 
 export class FeedProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
+  private building = false;
+  private stage = '';
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -98,9 +100,15 @@ export class FeedProvider implements vscode.WebviewViewProvider {
       return;
     }
 
+    this.building = true;
+    this.stage = 'starting…';
     this.render({ kind: 'loading' });
     try {
-      const feed = await getFeed(token, this.options());
+      const feed = await getFeed(token, this.options(), (s) => {
+        this.stage = s;
+        if (this.building) this.render({ kind: 'loading' });
+      });
+      this.stage = 'finding similar projects…';
       const similar = await findSimilar(token, feed.profile);
       const cache: Cache = { ts: Date.now(), feed, similar };
       await this.context.globalState.update(CACHE_KEY, cache);
@@ -108,6 +116,8 @@ export class FeedProvider implements vscode.WebviewViewProvider {
     } catch (e) {
       if (cached) this.renderReady(cached);
       else this.render({ kind: 'error', message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      this.building = false;
     }
   }
 
@@ -189,6 +199,8 @@ export class FeedProvider implements vscode.WebviewViewProvider {
     if (state.kind === 'loading') {
       body =
         `<div class="topbar"><span class="dim">Building your feed…</span></div>` +
+        `<div class="dim" style="margin-bottom:8px">${esc(this.stage)}</div>` +
+        `<div class="dim" style="margin-bottom:8px">First build takes ~15–30s (semantic search + repo analysis).</div>` +
         Array.from(
           { length: 5 },
           () =>

@@ -364,13 +364,21 @@ function score(item: any, stars: number): [number, string[], boolean] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function getFeed(token: string, opts: Options): Promise<Feed> {
+export type Progress = (stage: string) => void;
+
+export async function getFeed(
+  token: string,
+  opts: Options,
+  onProgress?: Progress
+): Promise<Feed> {
+  onProgress?.('reading your GitHub profile…');
   const profile = buildProfile(await graphql(token, PROFILE_QUERY));
   const queries = buildQueries(profile);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const results = new Map<number, { item: any; matched: Set<string> }>();
-  for (const q of queries) {
+  for (const [i, q] of queries.entries()) {
+    onProgress?.(`semantic search ${i + 1}/${queries.length}…`);
     let text = `${q.text} is:issue is:open no:assignee`;
     if (q.lang) text += ` language:${q.lang}`;
     const resp = await searchIssues(token, text, PER_PAGE);
@@ -385,6 +393,7 @@ export async function getFeed(token: string, opts: Options): Promise<Feed> {
     await sleep(500); // semantic search: 10 req/min
   }
 
+  onProgress?.('fetching repo metadata…');
   const repoNames = [
     ...new Set(
       [...results.values()].map((r) => r.item.repository_url.split('repos/')[1] as string)
@@ -393,8 +402,11 @@ export async function getFeed(token: string, opts: Options): Promise<Feed> {
   const meta = await repoMeta(token, repoNames);
 
   // Pre-filter, then measure responsiveness on the repos that matter.
+  onProgress?.('measuring maintainer responsiveness…');
   const viable = repoNames.filter((fn) => (meta.get(fn)?.stars ?? 0) >= opts.minStars);
   const resp = await repoResponsiveness(token, viable);
+
+  onProgress?.('ranking…');
 
   const matches: Match[] = [];
   for (const { item, matched } of results.values()) {
