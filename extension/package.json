@@ -5,6 +5,15 @@
   "version": "0.3.0",
   "publisher": "nandanadileep",
   "license": "MIT",
+  "icon": "media/icon.png",
+  "keywords": [
+    "github",
+    "issues",
+    "open source",
+    "contribute",
+    "good first issue",
+    "semantic search"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/nandanadileep/get-issues.git"
