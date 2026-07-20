@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 import { getToken } from './github';
 import { getFeed, type Feed } from './engine';
-import { findSimilar, type SimilarResult } from './similar';
+import { findSimilar, workspaceRepo, type SimilarResult } from './similar';
 
 const CACHE_KEY = 'issueRadar.cache';
 const SAVED_KEY = 'issueRadar.saved';
 const DISMISSED_KEY = 'issueRadar.dismissed';
+const SCOPE_KEY = 'issueRadar.scope'; // 'repo' | 'global'
 const CACHE_TTL_MS = 6 * 3600 * 1000;
 const REPO_HIDE_THRESHOLD = 2; // dismiss 2+ issues from a repo -> hide the repo
 
 interface Cache {
   ts: number;
+  scope: string; // 'global' or 'owner/repo'
   feed: Feed;
   similar: SimilarResult;
 }
@@ -46,6 +48,7 @@ export class FeedProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private building = false;
   private stage = '';
+  private wsRepo: string | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -88,8 +91,18 @@ export class FeedProvider implements vscode.WebviewViewProvider {
 
   private async load(force: boolean): Promise<void> {
     if (!this.view) return;
+    this.wsRepo = await workspaceRepo();
+    const pref = this.context.globalState.get<string>(SCOPE_KEY, 'repo');
+    const repoScope = pref === 'repo' ? this.wsRepo : null;
+    const scopeKey = repoScope ?? 'global';
+
     const cached = this.context.globalState.get<Cache>(CACHE_KEY);
-    if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    if (
+      !force &&
+      cached &&
+      cached.scope === scopeKey &&
+      Date.now() - cached.ts < CACHE_TTL_MS
+    ) {
       this.renderReady(cached);
       return;
     }
@@ -101,16 +114,16 @@ export class FeedProvider implements vscode.WebviewViewProvider {
     }
 
     this.building = true;
-    this.stage = 'starting…';
+    this.stage = repoScope ? `scanning ${repoScope}…` : 'scanning all of GitHub…';
     this.render({ kind: 'loading' });
     try {
-      const feed = await getFeed(token, this.options(), (s) => {
+      const feed = await getFeed(token, { ...this.options(), repoScope }, (s) => {
         this.stage = s;
         if (this.building) this.render({ kind: 'loading' });
       });
       this.stage = 'finding similar projects…';
       const similar = await findSimilar(token, feed.profile);
-      const cache: Cache = { ts: Date.now(), feed, similar };
+      const cache: Cache = { ts: Date.now(), scope: scopeKey, feed, similar };
       await this.context.globalState.update(CACHE_KEY, cache);
       this.renderReady(cache);
     } catch (e) {
@@ -128,12 +141,21 @@ export class FeedProvider implements vscode.WebviewViewProvider {
     repo?: string;
     number?: number;
     title?: string;
+    scope?: string;
   }): Promise<void> {
     const cached = this.context.globalState.get<Cache>(CACHE_KEY);
     switch (msg.type) {
       case 'refresh':
         this.refresh();
         break;
+      case 'scope': {
+        await this.context.globalState.update(
+          SCOPE_KEY,
+          msg.scope === 'global' ? 'global' : 'repo'
+        );
+        this.refresh();
+        break;
+      }
       case 'signin': {
         const token = await getToken(true);
         if (token) this.refresh();
@@ -253,13 +275,24 @@ export class FeedProvider implements vscode.WebviewViewProvider {
              padding: 8px 10px; margin-bottom: 4px; overflow: hidden; }
   .profile > div { min-width: 0; }
 
-  .filters { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 2px; }
-  .fchip { max-width: 48%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  .filters, .scope-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 2px;
+                         align-items: center; }
+  .fchip, .schip { max-width: 48%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
            border: 1px solid var(--vscode-panel-border, #444); border-radius: 999px;
            padding: 1px 8px; font-size: 10px; cursor: pointer; opacity: 0.75; user-select: none; }
-  .fchip.on { opacity: 1; border-color: var(--vscode-focusBorder, #007fd4);
+  .fchip.on, .schip.on { opacity: 1; border-color: var(--vscode-focusBorder, #007fd4);
               background: var(--vscode-badge-background, #094771);
               color: var(--vscode-badge-foreground, #fff); }
+  details.profile { border: 1px solid var(--vscode-panel-border, #444); border-radius: 6px;
+                    padding: 8px 10px; margin-bottom: 4px; overflow: hidden; }
+  details.profile summary { cursor: pointer; list-style: none; overflow: hidden;
+                            white-space: nowrap; text-overflow: ellipsis; }
+  details.profile summary::-webkit-details-marker { display: none; }
+  details.profile summary::before { content: '▸'; display: inline-block; margin-right: 6px;
+                                    color: var(--vscode-descriptionForeground, #888);
+                                    transition: transform 0.12s ease; }
+  details.profile[open] summary::before { transform: rotate(90deg); }
+  details.profile[open] summary { margin-bottom: 4px; }
 
   h2 { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.09em;
        color: var(--vscode-descriptionForeground, #888);
@@ -441,6 +474,17 @@ export class FeedProvider implements vscode.WebviewViewProvider {
       `<span class="fchip" role="button" tabindex="0" data-f="gfi">good first issue</span>` +
       `<span class="fchip" role="button" tabindex="0" data-f="fresh">&lt;30d</span>`;
 
+    const scopeRepo = cache.scope === 'global' ? null : cache.scope;
+    const scopeRow = `<div class="scope-row"><span class="dim">Scanning:</span>${
+      this.wsRepo
+        ? `<span class="schip${scopeRepo ? ' on' : ''}" role="button" tabindex="0" data-act="scope" data-scope="repo" title="${esc(this.wsRepo)}">${esc(this.wsRepo.split('/')[1] ?? this.wsRepo)}</span>`
+        : ''
+    }<span class="schip${scopeRepo ? '' : ' on'}" role="button" tabindex="0" data-act="scope" data-scope="global">All of GitHub</span></div>`;
+
+    const emptyNote = scopeRepo
+      ? `<div class="dim" style="margin-top:12px">No open, unassigned matches in <b>${esc(scopeRepo)}</b> — try <a href="#" data-act="scope" data-scope="global">All of GitHub</a>.</div>`
+      : '<div class="dim" style="margin-top:12px">No matches survived the filters — hit Refresh.</div>';
+
     const savedSection = saved.length
       ? `<h2>Saved (${saved.length})</h2>` +
         saved
@@ -488,11 +532,12 @@ export class FeedProvider implements vscode.WebviewViewProvider {
   <span class="dim">@${esc(p.login)} · ${esc(built)}</span>
   <button class="btn" data-act="refresh">↻ Refresh</button>
 </div>
-<div class="profile">
-  <div class="ellipsis"><b>${esc(p.languages.map(([l]) => l).join(', '))}</b></div>
+${scopeRow}
+<details class="profile">
+  <summary><b>${esc(p.languages.map(([l]) => l).join(', '))}</b> <span class="dim">— why these matches?</span></summary>
   ${p.topics.length ? `<div class="dim clamp2">topics: ${esc(p.topics.map(([t]) => t).join(', '))}</div>` : ''}
   <div class="dim clamp2">queries: ${feed.queries.map((q) => esc(q.text)).join(' · ')}</div>
-</div>
+</details>
 <div class="filters">${filterChips}</div>
 ${savedSection}
 ${tiers
@@ -504,7 +549,7 @@ ${tiers
         .map((m) => this.issueCard(m, savedIds))
         .join('')}</div>`
   )
-  .join('') || '<div class="dim" style="margin-top:12px">No matches survived the filters — hit Refresh.</div>'}
+  .join('') || emptyNote}
 ${dismissedNote}
 <h2>Similar projects</h2>
 <div class="dim" style="margin-bottom:4px">${esc(similar.basis)}</div>

@@ -31,6 +31,8 @@ const MAINTAINER_ASSOC = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 export interface Options {
   minStars: number;
   maxAgeDays: number;
+  /** "owner/repo" to scan only that repo; null/undefined = all of GitHub */
+  repoScope?: string | null;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -379,8 +381,14 @@ export async function getFeed(
   const results = new Map<number, { item: any; matched: Set<string> }>();
   for (const [i, q] of queries.entries()) {
     onProgress?.(`semantic search ${i + 1}/${queries.length}…`);
-    let text = `${q.text} is:issue is:open no:assignee`;
-    if (q.lang) text += ` language:${q.lang}`;
+    let text: string;
+    if (opts.repoScope) {
+      // repo mode: one repo, so language filters and star floors don't apply
+      text = `${q.text} repo:${opts.repoScope} is:issue is:open no:assignee`;
+    } else {
+      text = `${q.text} is:issue is:open no:assignee`;
+      if (q.lang) text += ` language:${q.lang}`;
+    }
     const resp = await searchIssues(token, text, PER_PAGE);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const it of resp.items ?? []) {
@@ -403,7 +411,9 @@ export async function getFeed(
 
   // Pre-filter, then measure responsiveness on the repos that matter.
   onProgress?.('measuring maintainer responsiveness…');
-  const viable = repoNames.filter((fn) => (meta.get(fn)?.stars ?? 0) >= opts.minStars);
+  const viable = opts.repoScope
+    ? repoNames
+    : repoNames.filter((fn) => (meta.get(fn)?.stars ?? 0) >= opts.minStars);
   const resp = await repoResponsiveness(token, viable);
 
   onProgress?.('ranking…');
@@ -412,7 +422,8 @@ export async function getFeed(
   for (const { item, matched } of results.values()) {
     const repoFn = item.repository_url.split('repos/')[1] as string;
     const m = meta.get(repoFn);
-    if (!m || m.stars < opts.minStars) continue;
+    if (!m) continue;
+    if (!opts.repoScope && m.stars < opts.minStars) continue;
     const days = ageDays(item.created_at);
     if (days > opts.maxAgeDays) continue;
 
